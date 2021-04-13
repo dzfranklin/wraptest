@@ -4,20 +4,28 @@
 //! events before some tests:
 //!
 //! ```
-//! # use tracing::info;
-//! # use tracing_subscriber::fmt::format::FmtSpan;
-//! # use wraptest::wraptest;
-//! #
-//! fn setup_logs() {
-//!     tracing_subscriber::fmt::fmt()
-//!         .with_env_filter("debug")
-//!         .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-//!         .init();
-//! }
+//! #[cfg(test)]
+//! #[wraptest::wrap_tests(before = setup_logs)]
+//! mod tests {
+//!     use tracing::info;
+//!     use tracing_subscriber::fmt::format::FmtSpan;
 //!
-//! #[wraptest(before = setup_logs)]
-//! fn with_tracing() {
-//!     info!("with tracing");
+//!     fn setup_logs() {
+//!         tracing_subscriber::fmt::fmt()
+//!             .with_env_filter("debug")
+//!             .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+//!             .init();
+//!     }
+//!
+//!     #[test]    
+//!     fn with_tracing() {
+//!         info!("with tracing");
+//!     }
+//!
+//!     #[tokio::test]
+//!     async fn with_tracing_async() {
+//!         info!("with tracing -- but async");
+//!     }
 //! }
 //! ```
 //!
@@ -25,7 +33,6 @@
 //!
 //! ```
 //! # use tracing::info;
-//! # use wraptest::wraptest;
 //! #
 //! #[test]
 //! fn with_tracing() {
@@ -35,27 +42,19 @@
 //!     setup_logs();
 //!     with_tracing();
 //! }
-//! ```
 //!
-//! Async functions and running code after your test are also supported.
-//!
-//!
-//! ```
-//! # use wraptest::wraptest;
-//! #
-//! fn before() {
-//!     eprintln!("Called before");
-//! }
-//!
-//! fn after() {
-//!     eprintln!("Called after");
-//! }
-//!
-//! #[wraptest(before = before, after = after)]
-//! async fn it_works_async() {
-//!     assert_eq!(2 + 2, 4);
+//! #[tokio::test]
+//! async fn with_tracing_async() {
+//!     async fn with_tracing_async() {
+//!         info!("with tracing -- but async");
+//!     }
+//!     setup_logs();
+//!     with_tracing_async().await;
 //! }
 //! ```
+//!
+//! You can also specify `#[wraptest(after = after_fn)]` to run code after each
+//! test.
 //!
 //! ## Prior Art
 //! I got the idea of simplifying redundant test setup with macros from the
@@ -65,13 +64,15 @@
 //!
 #![warn(clippy::cargo)]
 
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
+    parse_quote,
     punctuated::Punctuated,
-    ItemFn, Token,
+    visit_mut::{self, VisitMut},
+    ItemFn, ItemMod, Token,
 };
 use syn::{parse_macro_input, Ident};
 
@@ -118,62 +119,120 @@ impl Parse for Arg {
     }
 }
 
-// TODO: Support defining default before/after
-
 #[proc_macro_error]
 #[proc_macro_attribute]
-pub fn wraptest(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as Args);
-    let wrapped = parse_macro_input!(input as ItemFn);
+pub fn wrap_tests(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let Args { before, after } = parse_macro_input!(args as Args);
+    let mut module = parse_macro_input!(input as ItemMod);
 
-    let sig = &wrapped.sig;
-    let input_ident = &sig.ident;
-    let is_async = sig.asyncness.is_some();
+    let mut visitor = ModVisitor { before, after };
+    visitor.visit_item_mod_mut(&mut module);
 
-    if !sig.inputs.is_empty() {
-        abort!(sig.inputs, "wraptest: Test functions cannot take arguments")
+    let out = quote! { #module };
+    out.into()
+}
+
+struct ModVisitor {
+    before: Option<Ident>,
+    after: Option<Ident>,
+}
+
+impl VisitMut for ModVisitor {
+    fn visit_item_fn_mut(&mut self, node: &mut ItemFn) {
+        if self.is_test_fn(node) {
+            if !node.sig.inputs.is_empty() {
+                abort!(
+                    node.sig.inputs,
+                    "wraptest doesn't support test functions that take arguments"
+                );
+            }
+
+            if node.sig.asyncness.is_some() {
+                self.visit_async_test_fn(node);
+            } else {
+                self.visit_non_async_test_fn(node);
+            }
+        }
+
+        visit_mut::visit_item_fn_mut(self, node);
+    }
+}
+
+impl ModVisitor {
+    fn is_test_fn(&self, node: &ItemFn) -> bool {
+        node.attrs.iter().any(|attr| {
+            if attr.path.is_ident("test") {
+                return true;
+            }
+
+            let pairs = attr
+                .path
+                .segments
+                .pairs()
+                .map(|pair| pair.value().ident.to_string())
+                .collect::<Vec<_>>();
+            if pairs.len() == 2 && pairs[0] == "tokio" && pairs[1] == "test" {
+                return true;
+            }
+
+            false
+        })
     }
 
-    let call_input = if is_async {
-        quote! {
-            #input_ident().await
-        }
-    } else {
-        quote! { #input_ident() }
-    };
+    fn visit_async_test_fn(&mut self, node: &mut ItemFn) {
+        let call_before = self.call_before_quote();
+        let call_after = self.call_after_quote();
 
-    let test_attr = if is_async {
-        quote! { #[::tokio::test] }
-    } else {
-        quote! { #[::core::prelude::v1::test] }
-    };
+        let wrapped = Self::without_attrs(node);
+        let name = &wrapped.sig.ident;
 
-    let test_fn_prefix = if is_async {
-        quote! { async }
-    } else {
-        quote! {}
-    };
-
-    let Args { before, after } = args;
-    let call_before = if let Some(before) = before {
-        quote! { #before(); }
-    } else {
-        quote! {}
-    };
-    let call_after = if let Some(after) = after {
-        quote! { #after(); }
-    } else {
-        quote! {}
-    };
-
-    let out = quote! {
-        #test_attr
-        #test_fn_prefix fn #input_ident() {
+        node.block.stmts = parse_quote! {
             #wrapped
-            #call_before;
-            #call_input;
-            #call_after;
+            #call_before
+            let result = #name().await;
+            #call_after
+            result
         }
-    };
-    TokenStream::from(out)
+    }
+
+    fn visit_non_async_test_fn(&mut self, node: &mut ItemFn) {
+        let call_before = self.call_before_quote();
+        let call_after = self.call_after_quote();
+
+        let wrapped = Self::without_attrs(node);
+        let name = &wrapped.sig.ident;
+
+        node.block.stmts = parse_quote! {
+            #wrapped
+            #call_before
+            let result = #name();
+            #call_after
+            result
+        }
+    }
+
+    fn without_attrs(node: &ItemFn) -> ItemFn {
+        let mut node = node.clone();
+        node.attrs = vec![];
+        node
+    }
+
+    fn call_before_quote(&mut self) -> TokenStream {
+        if let Some(before) = &self.before {
+            quote! { #before(); }
+        } else {
+            quote! {}
+        }
+    }
+
+    fn call_after_quote(&mut self) -> TokenStream {
+        if let Some(after) = &self.after {
+            quote! { #after(); }
+        } else {
+            quote! {}
+        }
+    }
 }

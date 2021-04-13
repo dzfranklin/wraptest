@@ -12,6 +12,7 @@ proc-macro = true
 quote = "1.0.9"
 syn = { version = "1.0.68", features = ["full"] }
 proc-macro-error = "1.0.4"
+proc-macro2 = "1.0.26"
 
 [dev-dependencies]
 tokio = { version = "1.4.0", features = ["rt", "macros", "time"] }
