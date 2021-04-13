@@ -1,4 +1,4 @@
-//! A simple way to run code before and after tests.
+//! A simple way to run code before and after every unit test.
 //!
 //! Suppose you want to set up a tracing subscriber to display log and tracing
 //! events before some tests:
@@ -55,13 +55,7 @@
 //!
 //! You can also specify `#[wraptest(after = after_fn)]` to run code after each
 //! test.
-//!
-//! ## Prior Art
-//! I got the idea of simplifying redundant test setup with macros from the
-//! excellent [test-env-log][test-env-log].
-//!
-//! [test-env-log]: https://github.com/d-e-s-o/test-env-log
-//!
+
 #![warn(clippy::cargo)]
 
 use proc_macro2::TokenStream;

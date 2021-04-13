@@ -3,6 +3,11 @@ name = "wraptest"
 version = "0.1.0"
 authors = ["Daniel Franklin <daniel@danielzfranklin.org>"]
 edition = "2018"
+description = "A simple way to run code before and after every unit test"
+license = "MIT"
+keywords = ["test", "setup", "teardown", "proc-macro"]
+categories = ["development-tools", "development-tools::testing", "asynchronous"]
+repository = "https://github.com/danielzfranklin/wraptest"
 
 [lib]
 proc-macro = true
