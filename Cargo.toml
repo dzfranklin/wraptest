@@ -1,0 +1,19 @@
+[package]
+name = "wraptest"
+version = "0.1.0"
+authors = ["Daniel Franklin <daniel@danielzfranklin.org>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+quote = "1.0.9"
+syn = { version = "1.0.68", features = ["full"] }
+proc-macro-error = "1.0.4"
+
+[dev-dependencies]
+tokio = { version = "1.4.0", features = ["rt", "macros", "time"] }
+tracing-subscriber = { version = "0.2.17", features = ["fmt"] }
+tracing = "0.1.25"
