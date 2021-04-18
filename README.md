@@ -1,34 +1,100 @@
 # wraptest
 
-[![Crates.io](https://img.shields.io/crates/v/wraptest)][crates-io]
-[![Crates.io](https://img.shields.io/crates/l/wraptest)][crates-io]
+[![Version 0.2.0](https://img.shields.io/crates/v/wraptest)][crates-io]
+[![License MIT](https://img.shields.io/crates/l/wraptest)][crates-io]
 
-A simple way to run code before and after every unit test.
+A simple way to run code before or after every unit test.
 
-For example, if you wanted to set up a tracing subscriber before every test:
+The wrapper function you specify is called with each of your tests. In the
+wrapper you do any setup you want, call the test function you were provided,
+and then do any cleanup.
+
+## Examples
+
+### Basic
+
+Suppose you want to set up a tracing subscriber to display log and tracing
+events before some tests:
 
 ```rust
-#[cfg(test)]
-#[wraptest::wrap_tests(before = setup_logs)]
+#[wraptest::wrap_tests(wrapper = with_logs)]
 mod tests {
     use tracing::info;
     use tracing_subscriber::fmt::format::FmtSpan;
 
-    fn setup_logs() {
-        tracing_subscriber::fmt::fmt()
-            .with_env_filter("debug")
-            .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-            .init();
+    fn with_logs<T: FnOnce() -> ()>(test_fn: T) {
+        let subscriber = tracing_subscriber::fmt::fmt()
+           .with_env_filter("debug")
+           .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+           .with_test_writer()
+           .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        test_fn();
     }
 
-    #[test]    
+    #[test]
     fn with_tracing() {
-        info!("with tracing");
+        info!("with tracing!");
+    }
+}
+```
+
+### Async
+
+If you have async tests (currently only [`tokio::test`] is supported) you
+can provide an async wrapper.
+
+```rust
+#[wraptest::wrap_tests(async_wrapper = with_logs)]
+mod tests {
+#
+    async fn with_logs<T, F>(test_fn: T)
+    where
+        T: FnOnce() -> F,
+        F: Future<Output = ()>,
+    {
+        let subscriber = /* ... */
+        let _guard = tracing::subscriber::set_default(subscriber);
+        test_fn();
     }
 
     #[tokio::test]
-    async fn with_tracing_async() {
-        info!("with tracing -- but async");
+    async fn with_tracing() {
+        info!("with tracing, but async!");
+    }
+}
+```
+
+### Custom return type
+
+If you want to return something other than `()` from your tests you just
+need to change the signature of your wrapper. Here's how you can make your
+wrappers generic over any return type:
+
+```rust
+#[wraptest::wrap_tests(wrapper = with_logs, async_wrapper = with_logs_async)]
+mod tests {
+    # use std::{future::Future, time::Duration};
+
+    fn with_logs<T, R>(test_fn: T) -> R
+    where
+        T: FnOnce() -> R,
+    {
+        eprintln!("Setting up...");
+        let result = test_fn();
+        eprintln!("Cleaning up...");
+        result
+    }
+
+    async fn with_logs_async<T, F, R>(test_fn: T) -> R
+    where
+        T: FnOnce() -> F,
+        F: Future<Output = R>,
+    {
+        eprintln!("Setting up...");
+        let result = test_fn().await;
+        eprintln!("Cleaning up...");
+        result
     }
 }
 ```

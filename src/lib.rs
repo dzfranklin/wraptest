@@ -1,14 +1,12 @@
-//! # wraptest
-//!
 //! A simple way to run code before or after every unit test.
 //!
 //! The wrapper function you specify is called with each of your tests. In the
 //! wrapper you do any setup you want, call the test function you were provided,
 //! and then do any cleanup.
 //!
-//! ## Examples
+//! # Examples
 //!
-//! ### Basic
+//! ## Basic
 //!
 //! Suppose you want to set up a tracing subscriber to display log and tracing
 //! events before some tests:
@@ -36,7 +34,7 @@
 //! }
 //! ```
 //!
-//! ### Async
+//! ## Async
 //!
 //! If you have async tests (currently only [`tokio::test`] is supported) you
 //! can provide an async wrapper.
@@ -70,11 +68,11 @@
 //! }
 //! ```
 //!
-//! ### Custom return type
+//! ## Custom return type
 //!
 //! If you want to return something other than `()` from your tests you just
 //! need to change the signature of your wrapper. Here's how you can make your
-//! wrappers generic over any return type.
+//! wrappers generic over any return type:
 //!
 //! ```
 //! #[wraptest::wrap_tests(wrapper = with_logs, async_wrapper = with_logs_async)]
@@ -103,7 +101,6 @@
 //!     }
 //! }
 //! ```
-//!
 
 #![warn(clippy::cargo)]
 
