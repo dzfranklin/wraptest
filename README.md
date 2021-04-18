@@ -22,7 +22,8 @@ mod tests {
     use tracing::info;
     use tracing_subscriber::fmt::format::FmtSpan;
 
-    fn with_logs<T: FnOnce() -> ()>(test_fn: T) {
+    fn with_logs<T>(test_fn: T)
+    where T: FnOnce() -> () {
         let subscriber = tracing_subscriber::fmt::fmt()
            .with_env_filter("debug")
            .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
@@ -47,7 +48,6 @@ can provide an async wrapper.
 ```rust
 #[wraptest::wrap_tests(async_wrapper = with_logs)]
 mod tests {
-#
     async fn with_logs<T, F>(test_fn: T)
     where
         T: FnOnce() -> F,
@@ -72,11 +72,11 @@ need to change the signature of your wrapper. Here's how you can make your
 wrappers generic over any return type:
 
 ```rust
-#[wraptest::wrap_tests(wrapper = with_logs, async_wrapper = with_logs_async)]
+#[wraptest::wrap_tests(wrapper = with_setup, async_wrapper = with_setup_async)]
 mod tests {
     # use std::{future::Future, time::Duration};
 
-    fn with_logs<T, R>(test_fn: T) -> R
+    fn with_setup<T, R>(test_fn: T) -> R
     where
         T: FnOnce() -> R,
     {
@@ -86,7 +86,7 @@ mod tests {
         result
     }
 
-    async fn with_logs_async<T, F, R>(test_fn: T) -> R
+    async fn with_setup_async<T, F, R>(test_fn: T) -> R
     where
         T: FnOnce() -> F,
         F: Future<Output = R>,
