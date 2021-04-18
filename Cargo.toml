@@ -1,6 +1,6 @@
 [package]
 name = "wraptest"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Daniel Franklin <daniel@danielzfranklin.org>"]
 edition = "2018"
 description = "A simple way to run code before and after every unit test"

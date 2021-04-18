@@ -1,6 +1,6 @@
 # wraptest
 
-[![Version 0.2.0](https://img.shields.io/crates/v/wraptest)][crates-io]
+[![Version 0.2.1](https://img.shields.io/crates/v/wraptest)][crates-io]
 [![License MIT](https://img.shields.io/crates/l/wraptest)][crates-io]
 
 A simple way to run code before or after every unit test.
